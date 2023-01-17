@@ -1,0 +1,9 @@
+This repository contains utilities to use extended attribute APIs on different
+systems. The utilities are straightforward to use and map closely to their
+respective library/system calls.
+
+The utilities included are:
+- getxattr - Retrieve an extended attribute and writes its data to stdout.
+- listxattr - List extended attributes for a filesystem node.
+- removexattr - Remove an extended attribute for a filesystem node.
+- setxattr - Set an extended attribute for a filesystem node.

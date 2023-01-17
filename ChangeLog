@@ -1,0 +1,5 @@
+2023-01-17  Erik Larsson  <catacombae@gmail.com>
+
+	Version 1.0.
+
+	* Initial release supporting macOS, Linux and FreeBSD.
