@@ -22,6 +22,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+#include <dirent.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 #if defined(__FreeBSD__)
 #include <sys/extattr.h>
 #endif
@@ -33,6 +39,9 @@ int main(int argc, char **argv)
 {
 	int ret = (EXIT_FAILURE);
 	const char *path = NULL;
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	int attrdirfd = -1;
+#endif
 	ssize_t attrlist_size = 0;
 	char *attrlist = NULL;
 
@@ -60,6 +69,62 @@ int main(int argc, char **argv)
 		EXTATTR_NAMESPACE_USER,
 		NULL,
 		0);
+#elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	attrdirfd = attropen(path, ".", O_RDONLY | O_XATTR);
+	if(attrdirfd == -1) {
+		fprintf(stderr, "Error while opening attribute directory of "
+			"\"%s\": %s (%d)\n",
+			path, strerror(errno), errno);
+		goto out;
+	}
+
+	{
+		int dup_fd = dup(attrdirfd);
+		DIR *dirp = NULL;
+		struct dirent *de = NULL;
+		int err = 0;
+		int closedir_res = 0;
+
+		if(dup_fd == -1 || !(dirp = fdopendir(dup_fd))) {
+			fprintf(stderr, "Error while getting attribute "
+				"directory handle for \"%s\": %s (%d)\n",
+				path, strerror(errno), errno);
+			if(dup_fd != -1) {
+				close(dup_fd);
+			}
+
+			goto out;
+		}
+
+		errno = 0;
+		while((de = readdir(dirp))) {
+			if(de->d_name[0] == '.' && (!de->d_name[1] ||
+				(de->d_name[1] == '.' && !de->d_name[2])))
+			{
+				/* Ignore "." / "..". */
+				continue;
+			}
+
+			attrlist_size += strlen(de->d_name) + 1;
+			errno = 0;
+		}
+
+		err = errno;
+		closedir_res = closedir(dirp);
+
+		if(err) {
+			fprintf(stderr, "Error while reading attribute "
+				"directory of \"%s\": %s (%d)\n",
+				path, strerror(err), err);
+			goto out;
+		}
+		else if(closedir_res) {
+			fprintf(stderr, "Error while closing attribute "
+				"directory of \"%s\": %s (%d)\n",
+				path, strerror(errno), errno);
+			goto out;
+		}
+	}
 #else
 #error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
@@ -105,6 +170,82 @@ int main(int argc, char **argv)
 			EXTATTR_NAMESPACE_USER,
 			attrlist,
 			attrlist_size);
+#elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+		{
+			int dup_fd = -1;
+			DIR *dirp = NULL;
+			struct dirent *de = NULL;
+			int err = 0;
+			int closedir_res = 0;
+
+			if(lseek(attrdirfd, 0, SEEK_SET)) {
+				fprintf(stderr, "Error while seeking to start "
+					"of directory: %s (%d)\n",
+					strerror(errno), errno);
+				goto out;
+			}
+
+			dup_fd = dup(attrdirfd);
+			if(dup_fd == -1 || !(dirp = fdopendir(dup_fd))) {
+				fprintf(stderr, "Error while getting attribute "
+					"directory handle for \"%s\": %s "
+					"(%d)\n",
+					path, strerror(errno), errno);
+				if(dup_fd != -1) {
+					close(dup_fd);
+				}
+
+				goto out;
+			}
+
+			errno = 0;
+			while((de = readdir(dirp))) {
+				const size_t name_length = strlen(de->d_name);
+				const size_t attrlist_remaining =
+					attrlist_size - bytes_read;
+
+				if(de->d_name[0] == '.' && (!de->d_name[1] ||
+					(de->d_name[1] == '.' &&
+					!de->d_name[2])))
+				{
+					/* Ignore "." / "..". */
+					continue;
+				}
+
+				if(attrlist_remaining < name_length + 1) {
+					fprintf(stderr, "Not enough space for "
+						"all attributes in attribute "
+						"list. List may have been "
+						"modified behind our backs, "
+						"please try again.\n");
+					err = EINVAL;
+					break;
+				}
+
+				strcpy(&attrlist[bytes_read], de->d_name);
+				bytes_read += name_length + 1;
+				errno = 0;
+			}
+
+			if(!de) {
+				err = errno;
+			}
+
+			closedir_res = closedir(dirp);
+
+			if(err) {
+				fprintf(stderr, "Error while reading attribute "
+					"directory of \"%s\": %s (%d)\n",
+					path, strerror(err), err);
+				goto out;
+			}
+			else if(closedir_res) {
+				fprintf(stderr, "Error while closing attribute "
+					"directory of \"%s\": %s (%d)\n",
+					path, strerror(errno), errno);
+				goto out;
+			}
+		}
 #else
 #error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
@@ -149,6 +290,12 @@ out:
 	if(attrlist) {
 		free(attrlist);
 	}
+
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(attrdirfd != -1) {
+		close(attrdirfd);
+	}
+#endif
 
 	return ret;
 }

@@ -24,6 +24,9 @@
 #include <errno.h>
 #include <stdint.h>
 
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+#include <fcntl.h>
+#endif
 #include <unistd.h>
 #if defined(__FreeBSD__)
 #include <sys/extattr.h>
@@ -41,6 +44,12 @@ int main(int argc, char **argv)
 #if defined(__APPLE__) || defined(__DARWIN__)
 	const char *attr_offset_string = NULL;
 	unsigned long long attr_offset = 0;
+#endif
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	int nodefd = -1;
+	int attrdirfd = -1;
+	int attrfd = -1;
+	ssize_t attr_bytes_written = 0;
 #endif
 	char *attr_data_alloc = NULL;
 	size_t attr_data_size = 0;
@@ -142,6 +151,33 @@ int main(int argc, char **argv)
 		}
 	}
 
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(attr_name[0] == '/') {
+		fprintf(stderr, "Invalid attribute name \"%s\" (cannot start "
+			"with '/').\n", attr_name);
+		goto out;
+	}
+
+	nodefd = open(path, O_RDONLY | O_NOFOLLOW);
+	if(nodefd == -1) {
+		fprintf(stderr, "Error while opening node \"%s\": %s (%d)\n",
+			path,
+			strerror(errno),
+			errno);
+		goto out;
+	}
+
+	attrdirfd = openat(nodefd, ".", O_RDONLY | O_XATTR);
+	if(attrdirfd == -1) {
+		fprintf(stderr, "Error while opening \"%s\" node's attribute "
+			"directory: %s (%d)\n",
+			path,
+			strerror(errno),
+			errno);
+		goto out;
+	}
+#endif
+
 #if defined(__APPLE__) || defined(__DARWIN__)
 	if(setxattr(
 		path,
@@ -164,6 +200,39 @@ int main(int argc, char **argv)
 		attr_name,
 		attr_data,
 		attr_data_size) < 0)
+#elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	/* TODO: Solaris allows whole xattr directory hierarchies under a node.
+	 * To support creating attributes in xattr directory hierarchies we must
+	 * split any pathname components and create directories for them if they
+	 * do not exist. At the moment setting such xattrs will fail. */
+
+	/* If the attribute existed before, then we should remove it. */
+	if(unlinkat(attrdirfd, attr_name, 0) && errno != ENOENT) {
+		fprintf(stderr, "Error while removing existing extended "
+			"attribute  \"%s\" for node \"%s\": %s (%d)\n",
+			attr_name, path, strerror(errno), errno);
+		goto out;
+	}
+
+	attrfd = openat(nodefd, attr_name,
+		O_WRONLY | O_CREAT | O_EXCL | O_XATTR, 0777);
+	if(attrfd == -1) {
+		fprintf(stderr, "Error while creating extended attribute "
+			"\"%s\" for node \"%s\": %s (%d)\n",
+			attr_name, path, strerror(errno), errno);
+		goto out;
+	}
+
+	/* Write out the attribute data. */
+	attr_bytes_written = write(attrfd, attr_data, attr_data_size);
+	if(attr_bytes_written >= 0 && attr_bytes_written != attr_data_size) {
+		fprintf(stderr, "Partial write while setting extended "
+			"attribute \"%s\" for node \"%s\": %zu / %zu bytes "
+			"written\n",
+			attr_name, path, attr_bytes_written, attr_data_size);
+		goto out;
+	}
+	else if(attr_bytes_written < 0)
 #else
 #error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
@@ -176,9 +245,25 @@ int main(int argc, char **argv)
 
 	ret = (EXIT_SUCCESS);
 out:
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(attrfd != -1) {
+		close(attrfd);
+	}
+#endif
+
 	if(attr_data_alloc) {
 		free(attr_data_alloc);
 	}
+
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(attrdirfd != -1) {
+		close(attrdirfd);
+	}
+
+	if(nodefd != -1) {
+		close(nodefd);
+	}
+#endif
 
 	return ret;
 }

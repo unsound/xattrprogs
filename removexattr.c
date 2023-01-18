@@ -22,6 +22,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 #if defined(__FreeBSD__)
 #include <sys/extattr.h>
 #endif
@@ -34,6 +39,9 @@ int main(int argc, char **argv)
 	int ret = (EXIT_FAILURE);
 	const char *path = NULL;
 	const char *attr_name = NULL;
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	int attrdirfd = -1;
+#endif
 
 	if(argc != 3) {
 		fprintf(stderr, "usage: removexattr <filename> "
@@ -43,6 +51,27 @@ int main(int argc, char **argv)
 
 	path = argv[1];
 	attr_name = argv[2];
+
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(attr_name[0] == '/') {
+		fprintf(stderr, "Invalid attribute name \"%s\" (cannot start "
+			"with '/').\n", attr_name);
+		goto out;
+	}
+
+	attrdirfd = attropen(
+		path,
+		".",
+		O_RDONLY | O_NOFOLLOW);
+	if(attrdirfd == -1) {
+		fprintf(stderr, "Error while opening \"%s\" node's attribute "
+			"directory: %s (%d)\n",
+			path,
+			strerror(errno),
+			errno);
+		goto out;
+	}
+#endif
 
 #if defined(__APPLE__) || defined(__DARWIN__)
 	if(removexattr(
@@ -58,6 +87,11 @@ int main(int argc, char **argv)
 		path,
 		EXTATTR_NAMESPACE_USER,
 		attr_name))
+#elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(unlinkat(
+		attrdirfd,
+		attr_name,
+		0))
 #else
 #error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
@@ -70,5 +104,11 @@ int main(int argc, char **argv)
 
 	ret = (EXIT_SUCCESS);
 out:
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(attrdirfd != -1) {
+		close(attrdirfd);
+	}
+#endif
+
 	return ret;
 }

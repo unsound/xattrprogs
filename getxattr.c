@@ -22,8 +22,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 #if defined(__FreeBSD__)
 #include <sys/extattr.h>
+#endif
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+#include <sys/stat.h>
 #endif
 #if defined(__APPLE__) || defined(__DARWIN__) || defined(__linux__)
 #include <sys/xattr.h>
@@ -34,6 +42,10 @@ int main(int argc, char **argv)
 	int ret = (EXIT_FAILURE);
 	const char *path = NULL;;
 	const char *attr_name = NULL;
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	int attrfd = -1;
+	struct stat attrstat = { 0 };
+#endif
 	ssize_t attr_size = 0;
 	char *attr_data = NULL;
 	ssize_t bytes_read;
@@ -46,6 +58,28 @@ int main(int argc, char **argv)
 
 	path = argv[1];
 	attr_name = argv[2];
+
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(attr_name[0] == '/') {
+		fprintf(stderr, "Invalid attribute name \"%s\" (cannot start "
+			"with '/').\n", attr_name);
+		goto out;
+	}
+
+	attrfd = attropen(
+		path,
+		attr_name,
+		O_RDONLY | O_NOFOLLOW);
+	if(attrfd == -1) {
+		fprintf(stderr, "Error while opening extended attribute \"%s\" "
+			"of file \"%s\": %s (%d)\n",
+			attr_name,
+			path,
+			strerror(errno),
+			errno);
+		goto out;
+	}
+#endif
 
 #if defined(__APPLE__) || defined(__DARWIN__)
 	attr_size = getxattr(
@@ -68,6 +102,13 @@ int main(int argc, char **argv)
 		attr_name,
 		NULL,
 		0);
+#elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(fstat(attrfd, &attrstat)) {
+		attr_size = -1;
+	}
+	else {
+		attr_size = attrstat.st_size;
+	}
 #else
 #error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
@@ -108,6 +149,11 @@ int main(int argc, char **argv)
 		attr_name,
 		attr_data,
 		attr_size);
+#elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	bytes_read = read(
+		attrfd,
+		attr_data,
+		attr_size);
 #else
 #error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
@@ -138,6 +184,11 @@ out:
 	if(attr_data) {
 		free(attr_data);
 	}
+#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
+	if(attrfd != -1) {
+		close(attrfd);
+	}
+#endif
 
 	return ret;
 }
