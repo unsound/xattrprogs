@@ -69,9 +69,6 @@ int main(int argc, char **argv)
 		NULL,
 		0);
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
-#if defined(__FreeBSD__)
-#else
-#endif /* defined(__FreeBSD__) ... */
 	if(attr_size == -1) {
 		fprintf(stderr, "Error while getting size of extended "
 			"attribute for path \"%s\" and attribute name "
