@@ -60,6 +60,8 @@ int main(int argc, char **argv)
 		EXTATTR_NAMESPACE_USER,
 		NULL,
 		0);
+#else
+#error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
 	if(attrlist_size == 0) {
 #ifdef DEBUG
@@ -103,6 +105,8 @@ int main(int argc, char **argv)
 			EXTATTR_NAMESPACE_USER,
 			attrlist,
 			attrlist_size);
+#else
+#error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
 		if(bytes_read < 0) {
 			fprintf(stderr, "Error while reading extended "

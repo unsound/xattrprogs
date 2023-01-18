@@ -58,6 +58,8 @@ int main(int argc, char **argv)
 		path,
 		EXTATTR_NAMESPACE_USER,
 		attr_name))
+#else
+#error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
 	{
 		fprintf(stderr, "Error while removing extended attribute: %s "

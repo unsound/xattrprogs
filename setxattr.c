@@ -164,6 +164,8 @@ int main(int argc, char **argv)
 		attr_name,
 		attr_data,
 		attr_data_size) < 0)
+#else
+#error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
 	{
 		fprintf(stderr, "Failed to set extended attribute: %s "

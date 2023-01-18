@@ -68,6 +68,8 @@ int main(int argc, char **argv)
 		attr_name,
 		NULL,
 		0);
+#else
+#error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
 	if(attr_size == -1) {
 		fprintf(stderr, "Error while getting size of extended "
@@ -106,6 +108,8 @@ int main(int argc, char **argv)
 		attr_name,
 		attr_data,
 		attr_size);
+#else
+#error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
 	if(bytes_read == -1) {
 		fprintf(stderr, "Error while getting extended attribute data "
