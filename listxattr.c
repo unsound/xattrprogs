@@ -28,7 +28,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #endif
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #include <sys/extattr.h>
 #endif
 #if defined(__APPLE__) || defined(__DARWIN__) || defined(__linux__)
@@ -63,7 +63,7 @@ int main(int argc, char **argv)
 		path,
 		NULL,
 		0);
-#elif defined(__FreeBSD__)
+#elif defined(__FreeBSD__) || defined(__NetBSD__)
 	attrlist_size = extattr_list_link(
 		path,
 		EXTATTR_NAMESPACE_USER,
@@ -164,7 +164,7 @@ int main(int argc, char **argv)
 			path,
 			attrlist,
 			attrlist_size);
-#elif defined(__FreeBSD__)
+#elif defined(__FreeBSD__) || defined(__NetBSD__)
 		bytes_read = extattr_list_link(
 			path,
 			EXTATTR_NAMESPACE_USER,
@@ -265,7 +265,7 @@ int main(int argc, char **argv)
 		}
 
 		while(ptr < attrlist_size) {
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 			char *cur = &attrlist[ptr + 1];
 			unsigned char cur_len =
 				*((unsigned char*) &attrlist[ptr]);

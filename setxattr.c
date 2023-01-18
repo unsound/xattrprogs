@@ -28,7 +28,7 @@
 #include <fcntl.h>
 #endif
 #include <unistd.h>
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #include <sys/extattr.h>
 #endif
 #if defined(__APPLE__) || defined(__DARWIN__) || defined(__linux__)
@@ -193,7 +193,7 @@ int main(int argc, char **argv)
 		attr_data,
 		attr_data_size,
 		0))
-#elif defined(__FreeBSD__)
+#elif defined(__FreeBSD__) || defined(__NetBSD__)
 	if(extattr_set_link(
 		path,
 		EXTATTR_NAMESPACE_USER,

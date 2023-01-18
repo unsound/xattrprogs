@@ -27,7 +27,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #endif
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #include <sys/extattr.h>
 #endif
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
@@ -95,7 +95,7 @@ int main(int argc, char **argv)
 		attr_name,
 		NULL,
 		0);
-#elif defined(__FreeBSD__)
+#elif defined(__FreeBSD__) || defined(__NetBSD__)
 	attr_size = extattr_get_link(
 		path,
 		EXTATTR_NAMESPACE_USER,
@@ -142,7 +142,7 @@ int main(int argc, char **argv)
 		attr_name,
 		attr_data,
 		attr_size);
-#elif defined(__FreeBSD__)
+#elif defined(__FreeBSD__) || defined(__NetBSD__)
 	bytes_read = extattr_get_link(
 		path,
 		EXTATTR_NAMESPACE_USER,
