@@ -38,8 +38,12 @@
 int main(int argc, char **argv)
 {
 	int ret = (EXIT_FAILURE);
+	int argp = 1;
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+	int namespace = EXTATTR_NAMESPACE_USER;
+#endif
 	const char *path;
-	const char *attr_name;
+	const char *attr_name = NULL;
 	const char *attr_data = NULL;
 #if defined(__APPLE__) || defined(__DARWIN__)
 	const char *attr_offset_string = NULL;
@@ -54,23 +58,58 @@ int main(int argc, char **argv)
 	char *attr_data_alloc = NULL;
 	size_t attr_data_size = 0;
 
-	if(argc < 3 || argc > 5) {
-		fprintf(stderr, "usage: setxattr <filename> <attribute name> "
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+	while(argp < argc) {
+		if(argv[argp][0] != '-') {
+			/* Not an option switch. Move on to the mandatory
+			 * arguments. */
+			break;
+		}
+		else if(argv[argp][1] == '-') {
+			/* Stop parsing options when '--' is encountered. */
+			++argp;
+			break;
+		}
+#ifdef EXTATTR_NAMESPACE_EMPTY
+		else if(argv[argp][1] == 'e') {
+			namespace = EXTATTR_NAMESPACE_EMPTY;
+			++argp;
+		}
+#endif
+		else if(argv[argp][1] == 'u') {
+			namespace = EXTATTR_NAMESPACE_USER;
+			++argp;
+		}
+		else if(argv[argp][1] == 's') {
+			namespace = EXTATTR_NAMESPACE_SYSTEM;
+			++argp;
+		}
+	}
+#endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+
+	path = (argp < argc) ? argv[argp++] : NULL;
+	attr_name = (argp < argc) ? argv[argp++] : NULL;
+#if defined(__APPLE__) || defined(__DARWIN__)
+	attr_offset_string = (argp < argc) ? argv[argp++] : NULL;
+#endif
+	attr_data = (argp < argc) ? argv[argp++] : NULL;
+
+	if(!path || !attr_name || argp < argc) {
+		fprintf(stderr, "usage: setxattr "
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+			"["
+#if defined(EXTATTR_NAMESPACE_EMPTY)
+			"-e|"
+#endif
+			"-u|-s] "
+#endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+			"<filename> <attribute name> "
 #if defined(__APPLE__) || defined(__DARWIN__)
 			"[<attribute offset>] "
 #endif
 			"[<attribute data>]\n");
 		goto out;
 	}
-
-	path = argv[1];
-	attr_name = argv[2];
-#if defined(__APPLE__) || defined(__DARWIN__)
-	attr_offset_string = (argc >= 4) ? argv[3] : NULL;
-	attr_data = (argc >= 5) ? argv[4] : NULL;
-#else
-	attr_data = (argc >= 4) ? argv[3] : NULL;
-#endif
 
 #if defined(__APPLE__) || defined(__DARWIN__)
 	if(attr_offset_string) {
@@ -196,7 +235,7 @@ int main(int argc, char **argv)
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
 	if(extattr_set_link(
 		path,
-		EXTATTR_NAMESPACE_USER,
+		namespace,
 		attr_name,
 		attr_data,
 		attr_data_size) < 0)

@@ -40,6 +40,10 @@
 int main(int argc, char **argv)
 {
 	int ret = (EXIT_FAILURE);
+	int argp = 1;
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+	int namespace = EXTATTR_NAMESPACE_USER;
+#endif
 	const char *path = NULL;;
 	const char *attr_name = NULL;
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
@@ -50,14 +54,51 @@ int main(int argc, char **argv)
 	char *attr_data = NULL;
 	ssize_t bytes_read;
 
-	if(argc != 3) {
-		fprintf(stderr, "usage: getxattr <filename> "
-			"<attribute name>\n");
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+	while(argp < argc) {
+		if(argv[argp][0] != '-') {
+			/* Not an option switch. Move on to the mandatory
+			 * arguments. */
+			break;
+		}
+		else if(argv[argp][1] == '-') {
+			/* Stop parsing options when '--' is encountered. */
+			++argp;
+			break;
+		}
+#if defined(EXTATTR_NAMESPACE_EMPTY)
+		else if(argv[argp][1] == 'e') {
+			namespace = EXTATTR_NAMESPACE_EMPTY;
+			++argp;
+		}
+#endif
+		else if(argv[argp][1] == 'u') {
+			namespace = EXTATTR_NAMESPACE_USER;
+			++argp;
+		}
+		else if(argv[argp][1] == 's') {
+			namespace = EXTATTR_NAMESPACE_SYSTEM;
+			++argp;
+		}
+	}
+#endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+
+	path = (argp < argc) ? argv[argp++] : NULL;
+	attr_name = (argp < argc) ? argv[argp++] : NULL;
+
+	if(!path || !attr_name || argp < argc) {
+		fprintf(stderr, "usage: getxattr "
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+			"["
+#if defined(EXTATTR_NAMESPACE_EMPTY)
+			"-e|"
+#endif
+			"-u|-s] "
+#endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+			"<filename> <attribute name>"
+			"\n");
 		goto out;
 	}
-
-	path = argv[1];
-	attr_name = argv[2];
 
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 	if(attr_name[0] == '/') {
@@ -98,7 +139,7 @@ int main(int argc, char **argv)
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
 	attr_size = extattr_get_link(
 		path,
-		EXTATTR_NAMESPACE_USER,
+		namespace,
 		attr_name,
 		NULL,
 		0);
@@ -145,7 +186,7 @@ int main(int argc, char **argv)
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
 	bytes_read = extattr_get_link(
 		path,
-		EXTATTR_NAMESPACE_USER,
+		namespace,
 		attr_name,
 		attr_data,
 		attr_size);

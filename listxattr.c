@@ -37,7 +37,23 @@
 
 int main(int argc, char **argv)
 {
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+	static const int namespaces[] = {
+#ifdef EXTATTR_NAMESPACE_EMPTY
+		EXTATTR_NAMESPACE_EMPTY,
+#endif
+		EXTATTR_NAMESPACE_USER,
+		EXTATTR_NAMESPACE_SYSTEM,
+	};
+#endif
+
 	int ret = (EXIT_FAILURE);
+	int argp = 1;
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+	int namespaces_start_index = 0;
+	int namespaces_end_index = sizeof(namespaces) / sizeof(namespaces[0]);
+	size_t i = 0;
+#endif
 	const char *path = NULL;
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 	int attrdirfd = -1;
@@ -45,46 +61,95 @@ int main(int argc, char **argv)
 	ssize_t attrlist_size = 0;
 	char *attrlist = NULL;
 
-	if(argc != 2) {
-		fprintf(stderr, "usage: listxattr <filename>\n");
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+	while(argp < argc) {
+		if(argv[argp][0] != '-') {
+			/* Not an option switch. Move on to the mandatory
+			 * arguments. */
+			break;
+		}
+		else if(argv[argp][1] == '-') {
+			/* Stop parsing options when '--' is encountered. */
+			++argp;
+			break;
+		}
+#ifdef EXTATTR_NAMESPACE_EMPTY
+		else if(argv[argp][1] == 'e') {
+			namespaces_start_index = 0;
+			namespaces_end_index = 1;
+			++argp;
+		}
+#endif
+		else if(argv[argp][1] == 'u') {
+			namespaces_start_index = 1;
+			namespaces_end_index = 2;
+			++argp;
+		}
+		else if(argv[argp][1] == 's') {
+			namespaces_start_index = 2;
+			namespaces_end_index = 3;
+			++argp;
+		}
+	}
+#endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+
+	path = (argp < argc) ? argv[argp++] : NULL;
+
+	if(!path || (argp < argc)) {
+		fprintf(stderr, "usage: listxattr "
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+			"["
+#ifdef EXTATTR_NAMESPACE_EMPTY
+			"-e|"
+#endif
+			"-u|-s] "
+#endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+			"<filename>\n");
 		goto out;
 	}
 
-	path = argv[1];
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+	for(i = namespaces_start_index; i < namespaces_end_index; ++i)
+#else
+	do
+#endif
+	{
+		ssize_t bytes_read = -1;
+		ssize_t ptr = 0;
 
 #if defined(__APPLE__) || defined(__DARWIN__)
-	attrlist_size = listxattr(
-		path,
-		NULL,
-		0,
-		0);
+		attrlist_size = listxattr(
+			path,
+			NULL,
+			0,
+			XATTR_NOFOLLOW);
 #elif defined(__linux__)
-	attrlist_size = llistxattr(
-		path,
-		NULL,
-		0);
+		attrlist_size = llistxattr(
+			path,
+			NULL,
+			0);
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
-	attrlist_size = extattr_list_link(
-		path,
-		EXTATTR_NAMESPACE_USER,
-		NULL,
-		0);
+		attrlist_size = extattr_list_link(
+			path,
+			namespaces[i],
+			NULL,
+			0);
 #elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
-	attrdirfd = attropen(path, ".", O_RDONLY | O_XATTR);
-	if(attrdirfd == -1) {
-		fprintf(stderr, "Error while opening attribute directory of "
-			"\"%s\": %s (%d)\n",
-			path, strerror(errno), errno);
-		goto out;
-	}
-
-	{
-		int dup_fd = dup(attrdirfd);
+		int dup_fd = -1;
 		DIR *dirp = NULL;
 		struct dirent *de = NULL;
 		int err = 0;
 		int closedir_res = 0;
 
+		attrdirfd = attropen(path, ".", O_RDONLY | O_XATTR);
+		if(attrdirfd == -1) {
+			fprintf(stderr, "Error while opening attribute "
+				"directory of \"%s\": %s (%d)\n",
+				path, strerror(errno), errno);
+			goto out;
+		}
+
+		dup_fd = dup(attrdirfd);
 		if(dup_fd == -1 || !(dirp = fdopendir(dup_fd))) {
 			fprintf(stderr, "Error while getting attribute "
 				"directory handle for \"%s\": %s (%d)\n",
@@ -124,26 +189,42 @@ int main(int argc, char **argv)
 				path, strerror(errno), errno);
 			goto out;
 		}
-	}
 #else
 #error "Don't know how to handle extended attributes on this platform."
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
-	if(attrlist_size == 0) {
+		if(attrlist_size == 0) {
 #ifdef DEBUG
-		fprintf(stderr, "INFO: No extended attributes found "
-			"for path \"%s\".\n", path);
+			fprintf(stderr, "INFO: No extended attributes found "
+				"for path \"%s\".\n", path);
 #endif
-	}
-	else if(attrlist_size == -1) {
-		fprintf(stderr, "Error while getting size of extended "
-			"attribute list for path \"%s\": %s "
-			"(errno=%d)\n",
-			path, strerror(errno), errno);
-		goto out;
-	}
-	else {
-		ssize_t bytes_read = 0;
-		ssize_t ptr = 0;
+			continue;
+		}
+		else if(attrlist_size == -1) {
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+			if(errno == EPERM) {
+				/* This is normal when a filesystem doesn't
+				 * support a namespace. Just move on... */
+				continue;
+			}
+#endif
+
+			fprintf(stderr, "Error while getting size of extended "
+				"attribute list "
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+				"of namespace %d "
+#endif
+				"for path \"%s\": %s "
+				"(errno=%d)\n",
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+				namespaces[i],
+#endif
+				path, strerror(errno), errno);
+			goto out;
+		}
+
+		if(attrlist) {
+			free(attrlist);
+		}
 
 		attrlist = calloc(1, sizeof(char) * (size_t) attrlist_size);
 		if(attrlist == NULL) {
@@ -167,7 +248,7 @@ int main(int argc, char **argv)
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
 		bytes_read = extattr_list_link(
 			path,
-			EXTATTR_NAMESPACE_USER,
+			namespaces[i],
 			attrlist,
 			attrlist_size);
 #elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
@@ -251,8 +332,15 @@ int main(int argc, char **argv)
 #endif /* defined(__APPLE__) || defined(__DARWIN__) ... */
 		if(bytes_read < 0) {
 			fprintf(stderr, "Error while reading extended "
-				"attribute list for path \"%s\": %s "
+				"attribute list "
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+				"of namespace %d "
+#endif
+				"for path \"%s\": %s "
 				"(errno=%d)\n",
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+				namespaces[i],
+#endif
 				path, strerror(errno), errno);
 			goto out;
 		}
@@ -266,6 +354,9 @@ int main(int argc, char **argv)
 
 		while(ptr < attrlist_size) {
 #if defined(__FreeBSD__) || defined(__NetBSD__)
+			char unknown_namespace_string[] =
+				"<namespace -XXXXXXXXXX>";
+			const char *namespace_string;
 			char *cur = &attrlist[ptr + 1];
 			unsigned char cur_len =
 				*((unsigned char*) &attrlist[ptr]);
@@ -273,7 +364,39 @@ int main(int argc, char **argv)
 			char *cur = &attrlist[ptr];
 			int cur_len = strlen(cur);
 #endif
-			fprintf(stdout, "%.*s\n", cur_len, cur);
+
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+			switch(namespaces[i]) {
+#ifdef EXTATTR_NAMESPACE_EMPTY
+			case EXTATTR_NAMESPACE_EMPTY:
+				namespace_string = "";
+				break;
+#endif
+			case EXTATTR_NAMESPACE_USER:
+				namespace_string = "<user>";
+				break;
+			case EXTATTR_NAMESPACE_SYSTEM:
+				namespace_string = "<system>";
+				break;
+			default:
+				snprintf(unknown_namespace_string,
+					sizeof(unknown_namespace_string),
+					"<namespace %d>", namespaces[i]);
+				namespace_string = unknown_namespace_string;
+				break;
+			}
+#endif
+
+			fprintf(stdout,
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+				"%-*s "
+#endif
+				"%.*s\n",
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+				(int) sizeof(unknown_namespace_string) - 1,
+				namespace_string,
+#endif
+				cur_len, cur);
 
 			ptr += cur_len + 1;
 		}
@@ -284,6 +407,9 @@ int main(int argc, char **argv)
 				ptr, attrlist_size);
 		}
 	}
+#if !(defined(__FreeBSD__) || defined(__NetBSD__))
+	while(0);
+#endif
 
 	ret = (EXIT_SUCCESS);
 out:
