@@ -54,6 +54,7 @@ int main(int argc, char **argv)
 	int namespaces_end_index = sizeof(namespaces) / sizeof(namespaces[0]);
 	size_t i = 0;
 #endif
+	int follow_links = 0;
 	const char *path = NULL;
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 	int attrdirfd = -1;
@@ -61,7 +62,6 @@ int main(int argc, char **argv)
 	ssize_t attrlist_size = 0;
 	char *attrlist = NULL;
 
-#if defined(__FreeBSD__) || defined(__NetBSD__)
 	while(argp < argc) {
 		if(argv[argp][0] != '-') {
 			/* Not an option switch. Move on to the mandatory
@@ -73,6 +73,11 @@ int main(int argc, char **argv)
 			++argp;
 			break;
 		}
+		else if(argv[argp][1] == 'L') {
+			follow_links = 1;
+			++argp;
+		}
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #ifdef EXTATTR_NAMESPACE_EMPTY
 		else if(argv[argp][1] == 'e') {
 			namespaces_start_index = 0;
@@ -90,21 +95,20 @@ int main(int argc, char **argv)
 			namespaces_end_index = 3;
 			++argp;
 		}
-	}
 #endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+	}
 
 	path = (argp < argc) ? argv[argp++] : NULL;
 
 	if(!path || (argp < argc)) {
-		fprintf(stderr, "usage: listxattr "
+		fprintf(stderr, "usage: listxattr [-L"
 #if defined(__FreeBSD__) || defined(__NetBSD__)
-			"["
 #ifdef EXTATTR_NAMESPACE_EMPTY
-			"-e|"
+			"|-e"
 #endif
-			"-u|-s] "
+			"|-u|-s"
 #endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
-			"<filename>\n");
+			"] <filename>\n");
 		goto out;
 	}
 
@@ -122,18 +126,19 @@ int main(int argc, char **argv)
 			path,
 			NULL,
 			0,
-			XATTR_NOFOLLOW);
+			follow_links ? 0 : XATTR_NOFOLLOW);
 #elif defined(__linux__)
-		attrlist_size = llistxattr(
+		attrlist_size = (follow_links ? listxattr : llistxattr)(
 			path,
 			NULL,
 			0);
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
-		attrlist_size = extattr_list_link(
-			path,
-			namespaces[i],
-			NULL,
-			0);
+		attrlist_size =
+			(follow_links ? extattr_list_file : extattr_list_link)(
+				path,
+				namespaces[i],
+				NULL,
+				0);
 #elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 		int dup_fd = -1;
 		DIR *dirp = NULL;
@@ -141,7 +146,10 @@ int main(int argc, char **argv)
 		int err = 0;
 		int closedir_res = 0;
 
-		attrdirfd = attropen(path, ".", O_RDONLY | O_XATTR);
+		attrdirfd = attropen(
+			path,
+			".",
+			O_RDONLY | (follow_links ? 0 : O_NOFOLLOW));
 		if(attrdirfd == -1) {
 			fprintf(stderr, "Error while opening attribute "
 				"directory of \"%s\": %s (%d)\n",
@@ -239,18 +247,19 @@ int main(int argc, char **argv)
 			path,
 			attrlist,
 			attrlist_size,
-			0);
+			follow_links ? 0 : XATTR_NOFOLLOW);
 #elif defined(__linux__)
-		bytes_read = llistxattr(
+		bytes_read = (follow_links ? listxattr : llistxattr)(
 			path,
 			attrlist,
 			attrlist_size);
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
-		bytes_read = extattr_list_link(
-			path,
-			namespaces[i],
-			attrlist,
-			attrlist_size);
+		bytes_read =
+			(follow_links ? extattr_list_file : extattr_list_link)(
+				path,
+				namespaces[i],
+				attrlist,
+				attrlist_size);
 #elif (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 		{
 			int dup_fd = -1;

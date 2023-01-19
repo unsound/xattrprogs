@@ -42,6 +42,7 @@ int main(int argc, char **argv)
 #if defined(__FreeBSD__) || defined(__NetBSD__)
 	int namespace = EXTATTR_NAMESPACE_USER;
 #endif
+	int follow_links = 0;
 	const char *path;
 	const char *attr_name = NULL;
 	const char *attr_data = NULL;
@@ -58,7 +59,6 @@ int main(int argc, char **argv)
 	char *attr_data_alloc = NULL;
 	size_t attr_data_size = 0;
 
-#if defined(__FreeBSD__) || defined(__NetBSD__)
 	while(argp < argc) {
 		if(argv[argp][0] != '-') {
 			/* Not an option switch. Move on to the mandatory
@@ -70,6 +70,11 @@ int main(int argc, char **argv)
 			++argp;
 			break;
 		}
+		else if(argv[argp][1] == 'L') {
+			follow_links = 1;
+			++argp;
+		}
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #ifdef EXTATTR_NAMESPACE_EMPTY
 		else if(argv[argp][1] == 'e') {
 			namespace = EXTATTR_NAMESPACE_EMPTY;
@@ -84,8 +89,8 @@ int main(int argc, char **argv)
 			namespace = EXTATTR_NAMESPACE_SYSTEM;
 			++argp;
 		}
-	}
 #endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+	}
 
 	path = (argp < argc) ? argv[argp++] : NULL;
 	attr_name = (argp < argc) ? argv[argp++] : NULL;
@@ -95,15 +100,14 @@ int main(int argc, char **argv)
 	attr_data = (argp < argc) ? argv[argp++] : NULL;
 
 	if(!path || !attr_name || argp < argc) {
-		fprintf(stderr, "usage: setxattr "
+		fprintf(stderr, "usage: setxattr [-L"
 #if defined(__FreeBSD__) || defined(__NetBSD__)
-			"["
-#if defined(EXTATTR_NAMESPACE_EMPTY)
-			"-e|"
+#ifdef EXTATTR_NAMESPACE_EMPTY
+			"|-e"
 #endif
-			"-u|-s] "
+			"|-u|-s"
 #endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
-			"<filename> <attribute name> "
+			"] <filename> <attribute name> "
 #if defined(__APPLE__) || defined(__DARWIN__)
 			"[<attribute offset>] "
 #endif
@@ -197,7 +201,9 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
-	nodefd = open(path, O_RDONLY | O_NOFOLLOW);
+	nodefd = open(
+		path,
+		O_RDONLY | (follow_links ? 0 : O_NOFOLLOW));
 	if(nodefd == -1) {
 		fprintf(stderr, "Error while opening node \"%s\": %s (%d)\n",
 			path,
@@ -224,16 +230,16 @@ int main(int argc, char **argv)
 		attr_data,
 		attr_data_size,
 		attr_offset,
-		0))
+		follow_links ? 0 : XATTR_NOFOLLOW))
 #elif defined(__linux__)
-	if(lsetxattr(
+	if((follow_links ? setxattr : lsetxattr)(
 		path,
 		attr_name,
 		attr_data,
 		attr_data_size,
 		0))
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
-	if(extattr_set_link(
+	if((follow_links ? extattr_set_file : extattr_set_link)(
 		path,
 		namespace,
 		attr_name,

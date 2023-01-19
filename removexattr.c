@@ -41,13 +41,13 @@ int main(int argc, char **argv)
 #if defined(__FreeBSD__) || defined(__NetBSD__)
 	int namespace = EXTATTR_NAMESPACE_USER;
 #endif
+	int follow_links = 0;
 	const char *path = NULL;
 	const char *attr_name = NULL;
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 	int attrdirfd = -1;
 #endif
 
-#if defined(__FreeBSD__) || defined(__NetBSD__)
 	while(argp < argc) {
 		if(argv[argp][0] != '-') {
 			/* Not an option switch. Move on to the mandatory
@@ -59,6 +59,11 @@ int main(int argc, char **argv)
 			++argp;
 			break;
 		}
+		else if(argv[argp][1] == 'L') {
+			follow_links = 1;
+			++argp;
+		}
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #ifdef EXTATTR_NAMESPACE_EMPTY
 		else if(argv[argp][1] == 'e') {
 			namespace = EXTATTR_NAMESPACE_EMPTY;
@@ -73,22 +78,21 @@ int main(int argc, char **argv)
 			namespace = EXTATTR_NAMESPACE_SYSTEM;
 			++argp;
 		}
-	}
 #endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+	}
 
 	path = (argp < argc) ? argv[argp++] : NULL;
 	attr_name = (argp < argc) ? argv[argp++] : NULL;
 
 	if(!path || !attr_name || argp < argc) {
-		fprintf(stderr, "usage: removexattr "
+		fprintf(stderr, "usage: removexattr [-L"
 #if defined(__FreeBSD__) || defined(__NetBSD__)
-			"["
-#if defined(EXTATTR_NAMESPACE_EMPTY)
-			"-e|"
+#ifdef EXTATTR_NAMESPACE_EMPTY
+			"|-e"
 #endif
-			"-u|-s] "
+			"|-u|-s"
 #endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
-			"<filename> <attribute name>\n");
+			"] <filename> <attribute name>\n");
 		goto out;
 	}
 
@@ -102,7 +106,7 @@ int main(int argc, char **argv)
 	attrdirfd = attropen(
 		path,
 		".",
-		O_RDONLY | O_NOFOLLOW);
+		O_RDONLY | (follow_links ? 0 : O_NOFOLLOW));
 	if(attrdirfd == -1) {
 		fprintf(stderr, "Error while opening \"%s\" node's attribute "
 			"directory: %s (%d)\n",
@@ -117,13 +121,13 @@ int main(int argc, char **argv)
 	if(removexattr(
 		path,
 		attr_name,
-		0))
+		follow_links ? 0 : XATTR_NOFOLLOW))
 #elif defined(__linux__)
-	if(lremovexattr(
+	if((follow_links ? removexattr : lremovexattr)(
 		path,
 		attr_name))
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
-	if(extattr_delete_link(
+	if((follow_links ? extattr_delete_file : extattr_delete_link)(
 		path,
 		namespace,
 		attr_name))
