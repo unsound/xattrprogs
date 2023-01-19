@@ -46,6 +46,10 @@ int main(int argc, char **argv)
 #endif
 	const char *path = NULL;;
 	const char *attr_name = NULL;
+#if defined(__APPLE__) || defined(__DARWIN__)
+	const char *attr_offset_string = NULL;
+	unsigned long long attr_offset = 0;
+#endif
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 	int attrfd = -1;
 	struct stat attrstat = { 0 };
@@ -85,6 +89,9 @@ int main(int argc, char **argv)
 
 	path = (argp < argc) ? argv[argp++] : NULL;
 	attr_name = (argp < argc) ? argv[argp++] : NULL;
+#if defined(__APPLE__) || defined(__DARWIN__)
+	attr_offset_string = (argp < argc) ? argv[argp++] : NULL;
+#endif
 
 	if(!path || !attr_name || argp < argc) {
 		fprintf(stderr, "usage: getxattr "
@@ -96,9 +103,28 @@ int main(int argc, char **argv)
 			"-u|-s] "
 #endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
 			"<filename> <attribute name>"
+#if defined(__APPLE__) || defined(__DARWIN__)
+			" [<attribute offset>]"
+#endif
 			"\n");
 		goto out;
 	}
+
+#if defined(__APPLE__) || defined(__DARWIN__)
+	if(attr_offset_string) {
+		char *endptr = NULL;
+
+		errno = 0;
+		attr_offset = strtoull(attr_offset_string, &endptr, 0);
+		if(errno || ((*endptr || attr_offset > SIZE_MAX) &&
+			(errno = EILSEQ)))
+		{
+			fprintf(stderr, "Invalid offset: %s\n",
+				attr_offset_string);
+			goto out;
+		}
+	}
+#endif
 
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 	if(attr_name[0] == '/') {
@@ -128,7 +154,7 @@ int main(int argc, char **argv)
 		attr_name,
 		NULL,
 		0,
-		0,
+		attr_offset,
 		0);
 #elif defined(__linux__)
 	attr_size = lgetxattr(
@@ -175,7 +201,7 @@ int main(int argc, char **argv)
 		attr_name,
 		attr_data,
 		attr_size,
-		0,
+		attr_offset,
 		0);
 #elif defined(__linux__)
 	bytes_read = lgetxattr(
