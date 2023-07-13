@@ -43,6 +43,10 @@ int main(int argc, char **argv)
 	int namespace = EXTATTR_NAMESPACE_USER;
 #endif
 	int follow_links = 0;
+#if defined(__linux__) || defined(__APPLE__) || defined(__DARWIN__)
+	int create = 0;
+	int replace = 0;
+#endif /* defined(__linux__) || defined(__APPLE__) || defined(__DARWIN__) */
 	const char *path;
 	const char *attr_name = NULL;
 	const char *attr_data = NULL;
@@ -74,6 +78,20 @@ int main(int argc, char **argv)
 			follow_links = 1;
 			++argp;
 		}
+#if defined(__linux__) || defined(__APPLE__) || defined(__DARWIN__)
+		else if(argv[argp][1] == 'c' ||
+			!strcmp(argv[argp], "--create"))
+		{
+			create = 1;
+			++argp;
+		}
+		else if(argv[argp][1] == 'r' ||
+			!strcmp(argv[argp], "--replace"))
+		{
+			replace = 1;
+			++argp;
+		}
+#endif /* defined(__linux__) || defined(__APPLE__) || defined(__DARWIN__) */
 #if defined(__FreeBSD__) || defined(__NetBSD__)
 #ifdef EXTATTR_NAMESPACE_EMPTY
 		else if(argv[argp][1] == 'e') {
@@ -101,6 +119,9 @@ int main(int argc, char **argv)
 
 	if(!path || !attr_name || argp < argc) {
 		fprintf(stderr, "usage: setxattr [-L"
+#if defined(__linux__) || defined(__APPLE__) || defined(__DARWIN__)
+			"|-c|-r"
+#endif /* defined(__linux__) || defined(__APPLE__) || defined(__DARWIN__) */
 #if defined(__FreeBSD__) || defined(__NetBSD__)
 #ifdef EXTATTR_NAMESPACE_EMPTY
 			"|-e"
@@ -230,14 +251,17 @@ int main(int argc, char **argv)
 		attr_data,
 		attr_data_size,
 		attr_offset,
-		follow_links ? 0 : XATTR_NOFOLLOW))
+		(follow_links ? 0 : XATTR_NOFOLLOW) |
+		(create ? XATTR_CREATE : 0) |
+		(replace ? XATTR_REPLACE : 0)))
 #elif defined(__linux__)
 	if((follow_links ? setxattr : lsetxattr)(
 		path,
 		attr_name,
 		attr_data,
 		attr_data_size,
-		0))
+		(create ? XATTR_CREATE : 0) |
+		(replace ? XATTR_REPLACE : 0)))
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
 	if((follow_links ? extattr_set_file : extattr_set_link)(
 		path,
