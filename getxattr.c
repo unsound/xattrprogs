@@ -90,6 +90,11 @@ int main(int argc, char **argv)
 			++argp;
 		}
 #endif /* defined(__FreeBSD__) || defined(__NetBSD__) */
+		else {
+			fprintf(stderr, "Error: Unrecognized option '%s'.\n",
+				argv[argp]);
+			goto out;
+		}
 	}
 
 	path = (argp < argc) ? argv[argp++] : NULL;
