@@ -198,7 +198,9 @@ int main(int argc, char **argv)
 			}
 
 			attr_data_size += bytes_read;
-			alloc_size *= 2;
+			if(attr_data_size > alloc_size / 2) {
+				alloc_size *= 2;
+			}
 		}
 
 		if(alloc_size != attr_data_size) {
